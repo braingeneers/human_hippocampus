@@ -44,7 +44,10 @@ def read_phy_files(path: str, fs=20000.0):
             templates = np.load(f_zip.open('templates.npy'))  # (cluster_id, samples, channel_id)
             channels = np.load(f_zip.open('channel_map.npy')).squeeze()
             templates_w = np.load(f_zip.open('templates.npy'))
-            wmi = np.load(f_zip.open('whitening_mat_inv.npy'))
+            try:
+                wmi = np.load(f_zip.open('whitening_mat_inv.npy'))
+            except KeyError:
+                wmi = None
             spike_templates = np.load(f_zip.open('spike_templates.npy')).squeeze()
             spike_times = np.load(f_zip.open('spike_times.npy')).squeeze() / fs * 1e3  # in ms
             positions = np.load(f_zip.open('channel_positions.npy'))
@@ -67,11 +70,18 @@ def read_phy_files(path: str, fs=20000.0):
     neuron_dict = dict.fromkeys(np.arange(len(labeled_clusters)), None)
 
     # un-whitten the templates before finding the best channel
-    templates = np.dot(templates_w, wmi)
+    if wmi:
+        templates = np.dot(templates_w, wmi)
+    else: 
+        templates = templates_w
 
     neuron_attributes = []
     for i in range(len(labeled_clusters)):
         c = labeled_clusters[i]
+        try:
+            neuron_label = cluster_info['group'][cluster_info['cluster_id'] == c].values[0]
+        except NameError:
+            neuron_label = str(c)
         temp = templates[cls_temp[c]]
         amp = np.max(temp, axis=0) - np.min(temp, axis=0)
         sorted_idx = [ind for _, ind in sorted(zip(amp, np.arange(len(amp))))]
@@ -96,7 +106,7 @@ def read_phy_files(path: str, fs=20000.0):
                 amplitudes=cluster_agg["amplitudes"][c],
                 template=best_chan_temp,
                 templates=templates[cls_temp[c]].T,
-                label=cluster_info['group'][cluster_info['cluster_id'] == c].values[0],
+                label=neuron_label,
                 neighbor_channels=channels[nbgh_chan_idx],
                 neighbor_positions=[tuple(positions[idx]) for idx in nbgh_chan_idx],
                 neighbor_templates=[templates[cls_temp[c]].T[n] for n in nbgh_chan_idx]
